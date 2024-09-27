@@ -494,6 +494,17 @@ export function PostDetail({post, deleteMutation}){
 
 ## SECTION 3 - Infinite queries for loading data JIT (just-in-time)
 
+### Section summary
+
+- react query manages
+  - pageParams -> for next page to be fetched
+  - getNextPageParams - getNextPageParam: (lastPage, allPages)
+  - hasNextPage -> boolean to indicate whether pageParam is undefined
+- component handles calling `fetchNextPage`
+  - use hasNextPage value to determine when to stop
+
+---
+
 - fetch more data (Just-in-time) when a user scrolls
 - its an optimization instead of fetching all data at once
 - starwars api (returns data with "next" property and "previous" property)
@@ -531,7 +542,7 @@ TODO:
 - shape of data returned is different from useQuery()
 - returned data is an object with 2 properties:
   - "pages" (an array of objects for each page of data)
-  - "pageParams" what the param is for every page (not commonly used)
+  - "pageParams" what the param is for every page (managed by react query)
 - every query has its own element in the "pages" array, and that element represents the pages data for that query
 - pageParams keeps track of the keys of queries that have been retrieved
 - KEYWORDS: `fetchNextPage`, `hasNextPage`, `getNextPageParam`, `data`
@@ -616,6 +627,8 @@ export function InfinitePeople() {
     },
   });
 
+
+
   //fix for undefined .data error
   //28. loading and error handling useInfiniteQuery (fetching and error)- FIX: using data before there is data (by adding if() checks)
   //but now everytime it is loading, the already populated data dissapears..so the solution is to always return the loaded data (see below) but also add a check for if "isFetching" then show `<div className="loading">loading...</div>`
@@ -657,3 +670,7 @@ export function InfinitePeople() {
   );
 }
 ```
+
+### 30. bidirectional scrolling
+
+- 'next' has equivalent 'previous' for all infinite scroll
