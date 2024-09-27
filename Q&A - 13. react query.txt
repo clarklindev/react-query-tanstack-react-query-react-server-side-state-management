@@ -1,0 +1,51 @@
+Bonnie — Instructor
+0 upvotes
+3 hours ago
+Hi, Han-Nung!
+
+> but it seems on start all comments start at page 1 so would it be necessary for going backwards when currentPage decreases? because then it should either already be cached
+
+Yes, you're correct, the user always starts on page 1, so the previous pages would already be cached.  There are still a couple of cases I can think of where prefetching the previous pages would be useful: 
+
+1. The user leaves their computer and comes back after the gctime has expired, and then moves backward in through the pages
+
+2. If we saved the page as part of the search params (like localhost:3000?page=1), the user could send, say, a link to page 5 to a friend, and then that friend might move backward through the pages.
+
+Neither of these cases will account for the majority of the traffic, though. 😊
+
+
+
+> if user keeps pressing previous button it should fetch the previous page (which is already cached) so maybe do we need to keep state of previousPage? and then only if previousPage < currentPage then we should prefetch otherwise if previousPage > currentPage, then we can assume the previous button is pressed and we dont need to run prefetchQuery.
+
+> or prefetch on both side of new currentPage -> previousPage and nextPage?
+
+The reason we pre-fetch for the next page is so that the user won't see a blank page while the data loads. As discussed above, prefetching the previous page is only necessary when the gctime has expired -- otherwise the cached data will display while fresh data is being fetched.
+
+
+
+> based on lesson 14, correct me if i'm wrong, it seems that if something is already cached it wont even load it, it just uses the cached data, so even though the code for useEffect() runs and prefetchQuery() calls fetchPosts() because it has already fetched the data, it just uses cache data.
+
+So what displays depends on gctime and stale time:
+
+1. If there is cached data (which happens if gctime has not expired), then the cached data will display regardless of stale time.
+
+2. If there is no cached data, then no data will display regardless of stale time, and new data will be fetched.
+
+3. If there is cached data and stale time has not expired, then no new data will be fetched.
+
+4. If there is cached data and stale time has expired, then the cached data will display while new data is fetched.
+
+
+
+I hope that answers your questions! Happy to answer any follow-up questions.
+
+
+
+Cheers,
+Bonnie
+
+HL
+Han-Nung
+0 upvotes
+23 minutes ago
+thank you for clearing that up for me Bonny!
