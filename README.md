@@ -627,8 +627,6 @@ export function InfinitePeople() {
     },
   });
 
-
-
   //fix for undefined .data error
   //28. loading and error handling useInfiniteQuery (fetching and error)- FIX: using data before there is data (by adding if() checks)
   //but now everytime it is loading, the already populated data dissapears..so the solution is to always return the loaded data (see below) but also add a check for if "isFetching" then show `<div className="loading">loading...</div>`
@@ -674,3 +672,21 @@ export function InfinitePeople() {
 ### 30. bidirectional scrolling
 
 - 'next' has equivalent 'previous' for all infinite scroll
+
+---
+
+## SECTION 04 - React Query in Larger Apps: setup, centralization, custom hook
+
+- dealing with setup, centralization (error/loading)
+- custom hooks -> centralizing useReactQuery via hooks instead of using it directly in code
+- project - Lazy Day Spa (creating appointments for a SPA)
+- project - live backend, not responsive/mobile friendly, not auth protected
+- REQUIRED: create a file: `.env` with `EXPRESS_SECRET` (put any random string) for use by encryption package
+
+TODO:
+
+- centralizing fetching indicator / error handling
+- refetching data
+- react query integrating with auth
+- dependent queries
+- testing
