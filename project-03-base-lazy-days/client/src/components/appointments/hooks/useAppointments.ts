@@ -1,5 +1,5 @@
 import dayjs from "dayjs";
-import { useState, useEffect} from "react";
+import { useState, useEffect, useCallback} from "react";
 import {useQuery, useQueryClient} from '@tanstack/react-query';
 
 import { AppointmentDateMap } from "../types";
@@ -27,6 +27,13 @@ async function getAppointments(
 //     2b. prefetch the appointments for adjacent monthYears
 //   3. track the state of the filter (all appointments / available appointments)
 //     3a. return the only the applicable appointments for the current monthYear
+
+//for prefetchQuery and useQuery (OVERRIDE DEFAULT)
+const commonOptions = {
+  staleTime: 0,
+  gcTime: 30000
+};
+
 export function useAppointments() {
   /** ****************** START 1: monthYear state *********************** */
   // get the monthYear for the current date (for default monthYear state)
@@ -35,13 +42,16 @@ export function useAppointments() {
   // state to track current monthYear chosen by user
   // state value is returned in hook return object
   const [monthYear, setMonthYear] = useState(currentMonthYear);
+  
   const queryClient = useQueryClient();
+
   useEffect(()=>{
 
     const nextMonthYear = getNewMonthYear(monthYear, 1);
     queryClient.prefetchQuery({
       queryKey:[queryKeys.appointments, nextMonthYear.year, nextMonthYear.month],
-      queryFn: ()=> getAppointments(nextMonthYear.year, nextMonthYear.month)
+      queryFn: ()=> getAppointments(nextMonthYear.year, nextMonthYear.month),
+      ...commonOptions
     });
   },[queryClient, monthYear]);
 
@@ -60,6 +70,13 @@ export function useAppointments() {
   //   appointments that the logged-in user has reserved (in white)
   const { userId } = useLoginData();
 
+  const selectFunction = useCallback((data:AppointmentDateMap, showAll:boolean)=>{
+    if(showAll){
+      return data;
+    }
+    return getAvailableAppointments(data, userId)
+  }, [userId]);
+
   /** ****************** END 2: filter appointments  ******************** */
   /** ****************** START 3: useQuery  ***************************** */
   // useQuery call for appointments for the current monthYear
@@ -75,7 +92,11 @@ export function useAppointments() {
   /** ****************** END 3: useQuery  ******************************* */
   const {data:appointments = fallback} = useQuery({
     queryKey:[queryKeys.appointments, monthYear.year, monthYear.month],
-    queryFn: ()=> getAppointments(monthYear.year, monthYear.month)
+    queryFn: ()=> getAppointments(monthYear.year, monthYear.month),
+    select: (data) => selectFunction(data, showAll),
+    refetchOnWindowFocus: true,
+    refetchInterval: 60000,
+    ...commonOptions
   });
 
   return { appointments, monthYear, updateMonthYear, showAll, setShowAll };

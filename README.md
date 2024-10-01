@@ -690,3 +690,595 @@ TODO:
 - react query integrating with auth
 - dependent queries
 - testing
+
+### client
+
+- install @tanstack/react-query
+- the alias'es are set up in tsconfig.json
+
+```json
+//tsconfig.json
+
+  //...
+  "paths": {
+    "@/*": ["src/*"],
+    "@shared/*": ["../shared/*"]
+  },
+  //...
+
+```
+
+- react-query client in its own file (src/react-query/queryClient.ts) instead of in App.jsx
+- export the queryClient
+
+```ts
+// src/react-query/queryClient.ts
+import { QueryClient } from "@tanstack/react-query";
+
+export const queryClient = new QueryClient();
+```
+
+- hook up QueryClientProvider with queryClient
+- add ReactQueryDevtools component
+
+```ts
+//App.ts
+import { ChakraProvider } from "@chakra-ui/react";
+import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
+import { queryClient } from "@/react-query/queryClient";
+
+import { Home } from "./Home";
+import { Loading } from "./Loading";
+import { Navbar } from "./Navbar";
+import { ToastContainer } from "./toast";
+
+import { AuthContextProvider } from "@/auth/AuthContext";
+import { Calendar } from "@/components/appointments/Calendar";
+import { AllStaff } from "@/components/staff/AllStaff";
+import { Treatments } from "@/components/treatments/Treatments";
+import { Signin } from "@/components/user/Signin";
+import { UserProfile } from "@/components/user/UserProfile";
+import { theme } from "@/theme";
+
+export function App() {
+  return (
+    <ChakraProvider theme={theme}>
+      <QueryClientProvider client={queryClient}>
+        <AuthContextProvider>
+          <Loading />
+          <BrowserRouter>
+            <Navbar />
+            <Routes>
+              <Route path="/" element={<Home />} />
+              <Route path="/Staff" element={<AllStaff />} />
+              <Route path="/Calendar" element={<Calendar />} />
+              <Route path="/Treatments" element={<Treatments />} />
+              <Route path="/signin" element={<Signin />} />
+              <Route path="/user/:id" element={<UserProfile />} />
+            </Routes>
+          </BrowserRouter>
+          <ToastContainer />
+          <ReactQueryDevtools />
+        </AuthContextProvider>
+      </QueryClientProvider>
+    </ChakraProvider>
+  );
+}
+```
+
+### 38. Custom hooks
+
+- in large apps, you make a custom hook for each type of data
+  - then you can access from multiple components
+  - no keys mixup
+  - query functions encapsulated in custom hook
+  - abstracts implementation from display layer
+    - update hook if you change implementation
+    - no need to update components
+- ARTICLE - https://romanslonov.com/blog/tanstack-query-reusable-custom-hooks
+
+- note for axios, the base url is set in `src/react-query/constants.js` 'baseUrl'
+
+```ts
+// src/components/app/treatments/hooks/useTreatments.ts
+```
+
+### 40. centralized fetching indicator (useIsFetching)
+
+- instead of using 'isFetching' directly from useQuery return object,
+- use `useIsFetching()` hook
+- we have a Loading component in App that will be used by all components
+- then Loading.ts will use the `useIsFetching` hook to check whether to display spinner
+
+```ts
+//src/components/app/Loading.ts
+import { useIsFetching } from "@tanstack/react-query";
+
+export default Loading(){
+  const isFetching = useIsFetching(); //returns a number representing query calls in fetching state, if none, then spinner wont show
+}
+//...
+```
+
+### 41. onError default for QueryClient
+
+- there is no useError() hook, like the useIsFetching() hook for centrally displaying errors
+- instead, set default 'onError' callback for QueryCache
+  - defaults for QueryCache
+  - https://tanstack.com/query/latest/docs/reference/QueryCache#querycache
+
+```ts
+//src/react-query/queryClient.ts
+import { toast } from "@/components/app/toast";
+import { QueryClient } from "@tanstack/react-query";
+function errorHandler(errorMsg: string) {
+  // https://chakra-ui.com/docs/components/toast#preventing-duplicate-toast
+  // one message per page load, not one message per query
+  // the user doesn't care that there were three failed queries on the staff page
+  //    (staff, treatments, user)
+  const id = "react-query-toast";
+
+  if (!toast.isActive(id)) {
+    const action = "fetch";
+    const title = `could not ${action} data: ${
+      errorMsg ?? "error connecting to server"
+    }`;
+    toast({ id, title, status: "error", variant: "subtle", isClosable: true });
+  }
+}
+
+export const queryClient = new QueryClient({
+  queryCache: new QueryCache({
+    onError: (error) => {
+      //handle error
+      errorHandler(error.message);
+    },
+  }),
+});
+```
+
+### 41. code quiz (useStaff)
+
+- write customHook for staff data `/src/components/staff/hooks/useStaff.ts`
+- remove placeholder empty array
+- use `queryKeys` constant for query key
+- uncomment and use `getStaff` query function
+- use fallback data
+- AllStaff.tsx already uses `useStaff`
+- hook should use global fetching indicator
+- default error handling
+
+---
+
+- this section(s) deal with aditional features when using react query
+
+## Section 5 AND Section 6
+
+## Section 5
+
+### prefetching
+
+- you want to prefetch data when there isnt anything in the cache
+
+#### options for pre-populating data
+
+### 44. adding data to the cache
+
+- prefetchQuery vs useQuery - prefetchQuery is a one-time thing, whereas useQuery will be reused and recall fetch
+- to use prefetchQuery, access via queryClient
+
+```ts
+import { useQueryClient } from "@tanstack/react-query";
+const queryClient = useQueryClient({ context });
+```
+
+- option -> where to use? | data from ? | added to cache ?
+- `prefetchQuery` (used for adding data to cache) -> method of queryClient | server | yes
+- `setQueryData` (used for adding data to cache) -> method of queryClient | client | yes
+- `placeholderData` (temp place to store data and not add to cache) -> options to useQuery | client | no
+- `initialData` -> options to useQuery | client | yes
+
+### 45. prefetch in detail
+
+- so the idea is to prefetch data and store it in cache
+- but if this data is not "requested" before garbage collection time, then it will be garbage collected
+- you can specify the gcTime.
+- TODO: make a `usePrefetchTreatments` hook in `useTreatments.ts`, just as useQuery is called over and over,
+  usePrefetchTreatments will be called from Home (landing page) so that it preloads data and adds data to cache
+- when user visits Treatments page, if its within garbage collection time, it shows the cache AND fetches fresh data
+- when user visits Treatments page, if its been garbage collected, there is no initial data, and useQuery fetches fresh data
+- from Home.tsx just call `usePrefetchTreatments`
+
+### 46. implementation
+
+```ts
+//src/components/treatments/hooks/useTreatments.ts
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+
+export function usePrefetchTreatments(): void {
+  const queryClient = useQueryClient();
+  queryClient.prefetchQuery({
+    queryKey: [queryKeys.treatments],
+    queryFn: getTreatments,
+  });
+}
+```
+
+```ts
+//src/components/app/Home.tsx
+import { Icon, Stack, Text } from "@chakra-ui/react";
+import { GiFlowerPot } from "react-icons/gi";
+
+import { usePrefetchTreatments } from "@/components/treatments/hooks/useTreatments";
+import { BackgroundImage } from "@/components/common/BackgroundImage";
+
+export function Home() {
+  usePrefetchTreatments(); //the reason this is not in a useEffect is because you cant run hooks inside useEffect callbacks
+
+  return (
+    <Stack textAlign="center" justify="center" height="84vh">
+      <BackgroundImage />
+      <Text textAlign="center" fontFamily="Forum, sans-serif" fontSize="6em">
+        <Icon m={4} verticalAlign="top" as={GiFlowerPot} />
+        Lazy Days Spa
+      </Text>
+      <Text>Hours: limited</Text>
+      <Text>Address: nearby</Text>
+    </Stack>
+  );
+}
+```
+
+### 47. use appointments hook
+
+- src/components/appointments/hooks/useAppointments.tsx
+- src/components/appointments/Appointments.tsx
+- src/components/appointments/Calendar.tsx
+
+### 51. summary
+
+- pre-populate data options: pre-fetch, setQueryData, placeholderData, initialData
+- pre-fetch to pre-populate cache
+  - on component render
+  - on page (month/year) update
+- treat keys as dependency arrays
+
+---
+
+## Section 6
+
+- useCallback and useMemo are both hooks in React that help optimize performance, but they serve different purposes:
+
+### useCallback
+
+Purpose: Memoizes a function.
+Use Case: Prevents a function from being recreated on every render unless its dependencies change. This is useful when passing callbacks to child components, helping to avoid unnecessary re-renders.
+Syntax:
+
+```js
+const memoizedCallback = useCallback(() => {
+  // function logic
+}, [dependencies]);
+```
+
+### useMemo
+
+Purpose: Memoizes a computed value.
+Use Case: Prevents expensive calculations from being re-executed on every render unless its dependencies change. This is useful for optimizing performance when dealing with derived state or computationally heavy operations.
+Syntax:
+
+```js
+const memoizedValue = useMemo(() => {
+  // computation logic
+  return computedValue;
+}, [dependencies]);
+```
+
+- https://tkdodo.eu/blog/react-query-data-transformations
+
+```js
+// CORRECT memoizes by queryInfo.data
+React.useMemo(
+  () => queryInfo.data?.map((todo) => todo.name.toUpperCase()),
+  [queryInfo.data]
+);
+```
+
+### Summary
+
+- Use useCallback when you need to memoize a function.
+- Use useMemo when you need to memoize a value resulting from a computation.
+
+### transforming
+
+### 52. Filtering data with the useQuery's select Option
+
+- `select` option in `useQuery({select:()=>{}})` allows us to filter data (but it cant be an anonymous function)
+  - react query memo-izes to reduce unecessary computations
+  - only runs if data changes or the function has changed
+  - to make a stable function from an anonymous function use `useCallback`
+- filter function in utils: `getAvailableAppointments`
+- by default the `select` function receives the data destructed from `const {data} = useQuery()`
+
+### the hook
+
+```ts
+//src/components/appointments/hooks/useAppointments.ts
+import { getAvailableAppointments } from "../utils";
+
+export function useAppointments() {
+  /*...*/
+
+  const selectFunction = useCallback(
+    (data: AppointmentDateMap, showAll: boolean) => {
+      if (showAll) {
+        return data;
+      }
+      return getAvailableAppointments(data, userId);
+    },
+    [userId]
+  );
+
+  const fallback: AppointmentDateMap = {};
+
+  const { data: appointments = fallback } = useQuery({
+    queryKey: [queryKeys.appointments, monthYear.year, monthYear.month],
+    queryFn: () => getAppointments(monthYear.year, monthYear.month),
+    select: (data) => selectFunction(data, showAll),
+  });
+
+  /*...*/
+}
+```
+
+#### 53. useStaff
+
+- src/components/staff/hooks/useStaff.ts
+  - `const [filter, setFilter] = useState("all");` maintains the selection
+- src/components/staff/AllStaff.tsx
+- src/components/staff/utils.ts `filterByTreatment` will be used in select callback
+- SOLUTION (lesson 53 - 3min52sec)
+
+#### the filter function
+
+- src/components/staff/utils.ts
+
+```ts
+//src/components/staff/utils.ts
+import type { Staff } from "@shared/types";
+
+export function filterByTreatment(
+  staff: Staff[],
+  treatmentName: string
+): Staff[] {
+  return staff.filter((person) =>
+    person.treatmentNames
+      .map((t) => t.toLowerCase())
+      .includes(treatmentName.toLowerCase())
+  );
+}
+```
+
+```ts
+//src/components/staff/AllStaff.tsx
+export function AllStaff() {
+  const treatments = useTreatments();
+  const { staff, filter, setFilter } = useStaff();
+  return (
+    <RadioGroup onChange={setFilter} value={filter}>
+      <Radio value="all">All</Radio>
+
+      {treatments.map((t, index) => (
+        <Radio key={t.id} value={t.name}>
+          {t.name}
+        </Radio>
+      ))}
+    </RadioGroup>
+  );
+}
+```
+
+```ts
+//src/components/staff/hooks/useStaff.ts
+import { useState, useCallback } from "react";
+import { useQuery } from "@tanstack/react-query";
+
+import type { Staff } from "@shared/types";
+
+import { filterByTreatment } from "../utils";
+
+import { axiosInstance } from "@/axiosInstance";
+import { queryKeys } from "@/react-query/constants";
+
+// query function for useQuery
+async function getStaff(): Promise<Staff[]> {
+  const { data } = await axiosInstance.get("/staff");
+  return data;
+}
+
+export function useStaff() {
+  // for filtering staff by treatment
+  const [filter, setFilter] = useState("all");
+
+  const filterFunction = useCallback(
+    (unfilteredStaff: Staff[]) => {
+      if (filter === "all") {
+        return unfilteredStaff;
+      }
+      return filterByTreatment(unfilteredStaff, filter);
+    },
+    [filter]
+  ); //when filter changes...this function will re-run
+
+  // TODO: get data from server via useQuery
+  const fallback: Staff[] = [];
+
+  const { data: staff = fallback } = useQuery({
+    queryKey: [queryKeys.staff],
+    queryFn: getStaff,
+    select: filterFunction, //THIS IS WHAT WE ADDED..
+  });
+
+  return { staff, filter, setFilter };
+}
+```
+
+### 54. re-fetching data
+
+- re-fetching ensures stale data gets updated from server
+- you can see this when you leave the page and refocus
+
+#### auto-refetch (default)
+
+- by default, stale queries are automatically re-fetched in the background when:
+  - new instances of the query mount
+  - everytime a react component (that has a useQuery call) mounts
+  - window refocus
+  - network reconnect
+  - configured `refetchInterval` has expired
+    - auto polling
+
+### 55. update re-fetch options
+
+- control with global or query-specific options:
+  - refetchOnMount (bool) -> default: true
+  - refetchOnWindowFocus (bool) -> default: true
+  - refetchOnReconnect (bool) -> default: true
+  - refetchInterval (milliseconds)
+- or imperatively: `refetch` function in useQuery return object
+- suppress refetch by:
+  - increase staletime
+  - turn off `refetchOnMount`, `refetchOnWindowFocus`, `refetchOnReconnect`
+- NOTE: these options do NOT apply to .prefetch automatically
+
+### 56. global refetch options
+
+- globally applying refetch options
+- they can still be overridden by indivual query options
+
+TODO:
+
+- `user profile` and `user appointments` invalidated after mutations
+- `appointments` (auto refetching on interval)
+- global options in `src/react-query/queryClient.ts` add `defaultOptions`
+
+```ts
+//src/react-query/queryClient.ts
+import { QueryClient, QueryCache } from "@tanstack/react-query";
+
+//...
+export const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 600000, //10minutes,
+      gcTime: 900000, //15min - garbage collection time
+    },
+  },
+  queryCache: new QueryCache({
+    onError: (error) => {
+      //handle error
+      errorHandler(error.message);
+    },
+  }),
+});
+```
+
+- once you add the refetch options globally you can remove from other hooks
+- eg. `src/components/treatments/hooks/useTreatments.ts` -> there should be no refetch options since we added it globally
+
+### 57 override refetch defaults
+
+- add refetch overrides to useQuery and prefetchQuery options
+
+```ts
+//src/components/appointments/hooks/useAppointments.ts
+import { getAvailableAppointments } from "../utils";
+
+//for prefetchQuery and useQuery (OVERRIDE DEFAULT)
+const commonOptions = {
+  staleTime: 0,
+  gcTime: 30000,
+};
+
+export function useAppointments() {
+  /*...*/
+
+  useEffect(() => {
+    const nextMonthYear = getNewMonthYear(monthYear, 1);
+    queryClient.prefetchQuery({
+      queryKey: [
+        queryKeys.appointments,
+        nextMonthYear.year,
+        nextMonthYear.month,
+      ],
+      queryFn: () => getAppointments(nextMonthYear.year, nextMonthYear.month),
+      ...commonOptions,
+    });
+  }, [queryClient, monthYear]);
+
+  /*...*/
+
+  const selectFunction = useCallback(
+    (data: AppointmentDateMap, showAll: boolean) => {
+      if (showAll) {
+        return data;
+      }
+      return getAvailableAppointments(data, userId);
+    },
+    [userId]
+  );
+
+  const fallback: AppointmentDateMap = {};
+
+  const { data: appointments = fallback } = useQuery({
+    queryKey: [queryKeys.appointments, monthYear.year, monthYear.month],
+    queryFn: () => getAppointments(monthYear.year, monthYear.month),
+    select: (data) => selectFunction(data, showAll),
+    refetchOnWindowFocus: true,
+    ...commonOptions,
+  });
+
+  /*...*/
+}
+```
+
+### 58. polling
+
+- poll server and automatically refetch data on regular basis
+- use `refetchInterval` option of useQuery
+
+- NOTE: useAppointments vs userAppointments
+
+#### useUserAppointments
+
+- show all appointments for user logged in (for all time)
+
+#### useAppointments
+
+- show all appointments for all users (for selected month + year)
+
+```ts
+//src/components/appointments/hooks/useAppointments.ts
+const { data: appointments = fallback } = useQuery({
+  queryKey: [queryKeys.appointments, monthYear.year, monthYear.month],
+  queryFn: () => getAppointments(monthYear.year, monthYear.month),
+  select: (data) => selectFunction(data, showAll),
+  refetchOnWindowFocus: true,
+  refetchInterval: 60000, //minute..
+  ...commonOptions,
+});
+```
+
+---
+
+## Section 7
+
+- React Query and authentication
+
+## Section 8 - Mutations
+
+- updating data on the server
+
+## Section 9 - testing
