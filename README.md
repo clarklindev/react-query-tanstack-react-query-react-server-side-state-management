@@ -1273,12 +1273,207 @@ const { data: appointments = fallback } = useQuery({
 
 ---
 
-## Section 7
+## Section 7 - React Query and authentication
 
-- React Query and authentication
+### 60. intro to react query and auth
+
+- integrate react query with authentication
+
+### this section
+
+- dependent queries (queries activated under certain conditions)
+- `setQueryData`
+- `removeQueries`
+
+### Authentication
+
+- section using JWT (token authentication)
+- compares entered data with database, if they match -> server sends back a token
+- then on future requests from server (that require authentication), client adds JWT token to headers with the request as proof of identity
+
+### security
+
+- token encodes username + id (using the env secret), when its decoded on server, its compared for matches
+- this app, the token stored in user object that server sends back from server
+- token persisted in localStorage
+- JWT setup
+
+### 61. Auth hooks - hook for auth and user data
+
+- AuthContext's `useLoginData` -> returns value {`userId`, `userToken`, `clearLoginData`, `setLoginData`}
+- `useAuthActions` -> returns auth methods {`signin`, `signout`, `signup`}
+- `useUser` -> returns server user data {`user`, `updateUserData`, `clearUserData`}
+
+### relationships
+
+- `useUser` uses -> AuthContext's`useLoginData` (`userId`, `userToken`)
+- `useAuthActions` uses -> `useUser` (`clearUserData`, `updateUserData`) AND `useLoginData` (`clearLoginData`, `setLoginData`)
+
+### why do we set login data twice? once in useAuthActions and once in cache?
+
+- why not store just in queryCache -> because the query requires data (`userId`) from query cache to perform the query
+- logged in user is not server state -> its client state
+
+## 62. add useQuery call to useUser
+
+- `src/auth/AuthContext.tsx` -> `useLoginData` returns context
+- `src/components/user/hooks/useUser.ts`
+
+- so `useUser` needs (`userId` and `userToken` (for jwt)) from `useLoginData` (which is in AuthContext)
+
+## 'enabled' to conditionally run query (dependent queries (queries activated under certain conditions))
+
+```tsx
+// src/auth/AuthContext.tsx
+type AuthContextValue = {
+  userId: number | null;
+  userToken: string | null;
+  setLoginData: (loginData: LoginData) => void;
+  clearLoginData: () => void;
+};
+
+export const AuthContextProvider = ({
+  children,
+}: React.PropsWithChildren<object>) => {
+  //...
+
+  return (
+    <AuthContext.Provider
+      value={{ userId, userToken, clearLoginData, setLoginData }}
+    >
+      {children}
+    </AuthContext.Provider>
+  );
+};
+```
+
+- but note userId will be null if userId doesnt exist (user not logged in), then we dont want to run the function, and we can prevent function of `useQuery` from running using the `enabled` option -> `!!userId` (if userId is truthy -> `true`, else `false`)
+
+- note: we create `generateUserKey()` function to generate unique queryKey
+
+```ts
+//src/react-query/key-factories.ts
+import { queryKeys } from "./constants";
+
+export const generateUserKey = (userId: number, userToken: string) => {
+  return [queryKeys.user, userId, userToken];
+};
+```
+
+```ts
+//src/components/user/hooks/useUser.ts
+// query function
+
+async function getUser(userId: number, userToken: string) {
+  const { data }: AxiosResponse<{ user: User }> = await axiosInstance.get(
+    `/user/${userId}`,
+    {
+      headers: getJWTHeader(userToken),
+    }
+  );
+
+  return data.user;
+}
+
+export function useUser() {
+  //get details on the userId
+  const { userId, userToken } = useLoginData();
+
+  // TODO: call useQuery to update user data from
+  //renamed data to `user`
+  const { data: user } = useQuery({
+    enabled: !!userId, //conversion of userId to boolean (if userId is truthy -> `true`, else `false`)
+    queryKey: generateUserKey(userId, userToken),
+    queryFn: () => getUser(userId, userToken),
+    staleTime: Infinity, //data never marked as stale
+  });
+}
+```
+
+### 63. setQueryData and removeQueries
+
+- TODO FIX: when signing out, you want to remove the queryCache of signed-in user
+- TODO FIX: this information we fetch from server is actually passed from server when you sign in.
+
+### NEW QueryClient methods
+
+- useUser.ts has useQuery that maintains user data from server
+- we have methods to maintain the cache when user logs in (setQueryData) and when user logs out (removeQueries)
+
+- setQueryData(key, data) - after user signs in, you want to update query cache with updated data
+- removeQueries(queryFilter) - when user signs out -> with removeQueries, it takes queryKey..think of this as a prefix for what we want to remove from cache
+
+```ts
+//src/components/user/hooks/useUser.ts
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+
+//...
+
+const queryClient = useQueryClient();
+
+//this is called from src/auth/useAuthActions.tsx after user logs in authServerCall(), after user logs in, you receive the user data from server, and here you call updateUser(data.user)
+function updateUser(newUser: User): void {
+  //update user in query cache
+  queryClient.setQueryData(generateUserKey(newUser.id, newUser.token), newUser);
+}
+
+// meant to be called from src/auth/useAuthActions.tsx when user calls signout()
+function clearUser() {
+  // TODO: reset user to null in query cache
+  queryClient.removeQueries({
+    queryKey: [queryKeys.user],
+  });
+
+  //remove appointments data
+  queryClient.removeQueries({
+    queryKey: [queryKeys.appointments, queryKeys.user],
+  });
+}
+//...
+```
+
+### 64. add useQuery to useUserAppointments
+
+- src/components/user/hooks/useUserAppointments.ts
+
+```ts
+import type { Appointment } from "@shared/types";
+
+import { useQuery } from "@tanstack/react-query";
+import { axiosInstance, getJWTHeader } from "../../../axiosInstance";
+
+import { useLoginData } from "@/auth/AuthContext";
+import { queryKeys } from "@/react-query/constants";
+import { generateAppointmentKey } from "@/react-query/key-factories";
+
+// for when we need a query function for useQuery
+async function getUserAppointments(
+  userId: number,
+  userToken: string
+): Promise<Appointment[] | null> {
+  const { data } = await axiosInstance.get(`/user/${userId}/appointments`, {
+    headers: getJWTHeader(userToken),
+  });
+  return data.appointments;
+}
+
+export function useUserAppointments(): Appointment[] {
+  const { userId, userToken } = useLoginData();
+
+  const fallback: Appointment[] = [];
+
+  const { data: userAppointments = fallback } = useQuery({
+    enabled: !!userId,
+    queryKey: generateAppointmentKey(userId, userToken), //must call like this because result of function call is a value
+    queryFn: () => getUserAppointments(userId, userToken), //must call like this because its a function
+  });
+  return userAppointments;
+}
+```
 
 ## Section 8 - Mutations
 
 - updating data on the server
+- refreshing from server is important for mutations
 
 ## Section 9 - testing
