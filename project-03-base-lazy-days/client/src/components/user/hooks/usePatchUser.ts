@@ -1,13 +1,15 @@
 import jsonpatch from "fast-json-patch";
 
 import type { User } from "@shared/types";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { axiosInstance, getJWTHeader } from "../../../axiosInstance";
 import { useUser } from "./useUser";
 import { useCustomToast } from "@/components/app/hooks/useCustomToast";
+import { queryKeys } from "@/react-query/constants";
 
-// for when we need a server function
+export const MUTATION_KEY = "patch_user";
+
 async function patchUserOnServer(
   newData: User | null,
   originalData: User | null
@@ -28,14 +30,23 @@ async function patchUserOnServer(
 }
 
 export function usePatchUser() {
-  const { user, updateUser } = useUser();
+  const { user } = useUser();
+  const queryClient = useQueryClient();
+
   const toast = useCustomToast();
 
   const { mutate: patchUser } = useMutation({
+    mutationKey: [MUTATION_KEY],
+
     mutationFn: (newData: User) => patchUserOnServer(newData, user),
-    onSuccess: (userData: User | null) => {
+    onSuccess: () => {
       toast({ title: "updated user", status: "success" });
-      updateUser(userData);
+    },
+    onSettled: () => {
+      //`return` the promise to maintain 'inProgress' status until query invalidation is complete
+      return queryClient.invalidateQueries({
+        queryKey: [queryKeys.user],
+      });
     },
   });
 

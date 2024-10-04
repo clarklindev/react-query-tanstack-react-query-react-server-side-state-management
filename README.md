@@ -1815,12 +1815,115 @@ export function usePatchUser() {
 
 - NOTE: we deliberately delete the userToken dependency because if the time changes, the token changes and we need to use the same token
 
+#### ways to keep client in sync after mutation:
+
+- invalidate queries
+- updating cache with data returned after mutation -> but it only works if query key is the same before and after the mutation
+- optimistic updates
+
 ```ts
 //client/src/react-query/key-factories.ts
 export const generateUserKey = (userId: number, userToken: string) => {
   //deliberately delete userToken from dependency
   return [queryKeys.user, userId];
 };
+```
+
+### 72. optimistic updates with react query
+
+- [optimistic-updates](https://tanstack.com/query/latest/docs/framework/react/guides/optimistic-updates)
+
+- normally, data on page doesnt update until the cache has been updated for the query
+- optimistic update -> showing updates (before they update on server) meaning you assume the update will succeed so you show the updated info before the server has saved the data but if something goes wrong, you can rollbar
+- you can also update the cache (more complicated than just updating the ui)
+
+  - cancel any queries in progress
+  - save previous data for possible rollback
+  - need to handle rollback (call the functions to update the cache with rollback data)
+  - useful if showing the data in multiple components (updating cache updates data in all the places)
+
+### Optimistic updates via UI method
+
+- get mutation data with `useMutationState` (data you're sending to server to update)
+- use a mutations key `mutationKey` (identifies the mutations data)
+- display this data on page while mutation is pending
+- invalidate query after mutation is `settled`
+- if mutation failed, rollback the data
+- NOTE: instead of updating user onSuccess, use `onSettled` its onSuccess and onError combined (ie. it runs regardless of success or fail)
+- `onSettled` -> invalidate the query here..(requires queryClient)
+- you are no longer updating (in onSuccess()) by calling useUser's `updateUser()` with the returned data
+- NB - onSettled() returns the promise (the mutation)
+- `return` the promise to maintain 'inProgress' status until query invalidation is complete
+
+### 73. the code
+
+- update the code in the mutation file (`src/components/user/hooks/usePatchUser.ts`)
+- `src/components/user/UserProfile.ts`
+
+```ts
+//src/components/user/hooks/usePatchUser.ts
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { queryKeys } from "@/react-query/constants";
+
+export const MUTATION_KEY = "patch_user";
+export function usePatchUser() {
+  const { user } = useUser();
+  const queryClient = useQueryClient();
+
+  const toast = useCustomToast();
+
+  const { mutate: patchUser } = useMutation({
+    mutationKey: [MUTATION_KEY],
+    mutationFn: (newData: User) => patchUserOnServer(newData, user),
+    onSuccess: () => {
+      return toast({ title: "updated user", status: "success" });
+    },
+    onSettled: () => {
+      //`return` the promise to maintain 'inProgress' status until query invalidation is complete
+      return queryClient.invalidateQueries({
+        queryKey: [queryKeys.user],
+      });
+    },
+  });
+
+  return patchUser;
+}
+```
+
+- UserProfile uses useMutationState()
+- which will take a filter (because it could watch several mutations)
+- `filters:{mutationKey: [MUTATION_KEY], status: "pending"}` note filter MUTATION_KEY while status is 'pending'
+- using 'select' is similar to select in useQuery -> we will take the mutation data and get mutation states variables `mutation.state.variables`
+- this will give us an `array` of pending data for all mutations that match the filters `{ mutationKey: [MUTATION_KEY], status: "pending" }`
+- because there will only be one user (UserProfile), first item in array
+- RESULT -> immediate update even while mutation is in progress
+
+```ts
+//src/components/user/UserProfile.ts
+import { useMutationState } from "@tanstack/react-query";
+import { User } from "@shared/types";
+
+//...
+const pendingData = useMutationState({
+  filters: { mutationKey: [MUTATION_KEY], status: "pending" },
+  select: (mutation) => {
+    return mutation.state.variables as User;
+  },
+});
+
+const pendingUser = pendingData ? pendingData[0] : null;
+
+//...
+
+return (
+  // ...
+
+  <Heading>
+    Information for {pendingUser ? pendingUser.name : user?.name}
+  </Heading>
+
+  // ...
+);
 ```
 
 ## Section 9 - testing

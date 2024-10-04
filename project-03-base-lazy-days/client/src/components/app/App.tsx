@@ -35,7 +35,6 @@ export function App() {
             </Routes>
           </BrowserRouter>
           <ToastContainer />
-          
         </AuthContextProvider>
         <ReactQueryDevtools/>
       </QueryClientProvider>

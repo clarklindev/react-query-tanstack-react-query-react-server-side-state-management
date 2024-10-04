@@ -14,9 +14,11 @@ import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 
 
-import { usePatchUser } from "./hooks/usePatchUser";
+import { MUTATION_KEY, usePatchUser } from "./hooks/usePatchUser";
 import { useUser } from "./hooks/useUser";
 import { UserAppointments } from "./UserAppointments";
+
+import {User} from '@shared/types';
 
 import { useLoginData } from "@/auth/AuthContext";
 
@@ -34,6 +36,15 @@ export function UserProfile() {
     }
   }, [userId, navigate]);
 
+  const pendingData = useMutationState({
+    filters: { mutationKey: [MUTATION_KEY], status: "pending" },
+    select: (mutation) => {
+      return mutation.state.variables as User;
+    },
+  });
+
+  const pendingUser = pendingData ? pendingData[0] : null;
+
   const formElements = ["name", "address", "phone"];
   interface FormValues {
     name: string;
@@ -46,7 +57,7 @@ export function UserProfile() {
       <Stack spacing={8} mx="auto" w="xl" py={12} px={6}>
         <UserAppointments />
         <Stack textAlign="center">
-        <Heading>Information for {user?.name}</Heading>
+        <Heading>Information for {pendingUser ? pendingUser.name : user?.name}</Heading>
         </Stack>
         <Box rounded="lg" bg="white" boxShadow="lg" p={8}>
           <Formik
