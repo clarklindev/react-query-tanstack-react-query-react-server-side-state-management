@@ -35,8 +35,9 @@ export function App() {
             </Routes>
           </BrowserRouter>
           <ToastContainer />
-          <ReactQueryDevtools/>
+          
         </AuthContextProvider>
+        <ReactQueryDevtools/>
       </QueryClientProvider>
     </ChakraProvider>
   );

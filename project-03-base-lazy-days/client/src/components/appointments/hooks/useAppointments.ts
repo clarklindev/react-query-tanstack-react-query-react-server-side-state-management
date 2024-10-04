@@ -10,6 +10,12 @@ import { useLoginData } from "@/auth/AuthContext";
 import { axiosInstance } from "@/axiosInstance";
 import { queryKeys } from "@/react-query/constants";
 
+//for prefetchQuery and useQuery (OVERRIDE DEFAULT)
+const commonOptions = {
+  staleTime: 0,
+  gcTime: 30000
+};
+
 // for useQuery call
 async function getAppointments(
   year: string,
@@ -28,11 +34,6 @@ async function getAppointments(
 //   3. track the state of the filter (all appointments / available appointments)
 //     3a. return the only the applicable appointments for the current monthYear
 
-//for prefetchQuery and useQuery (OVERRIDE DEFAULT)
-const commonOptions = {
-  staleTime: 0,
-  gcTime: 30000
-};
 
 export function useAppointments() {
   /** ****************** START 1: monthYear state *********************** */

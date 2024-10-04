@@ -8,9 +8,11 @@ import {
   Input,
   Stack,
 } from "@chakra-ui/react";
+import { useMutationState } from "@tanstack/react-query";
 import { Field, Form, Formik } from "formik";
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+
 
 import { usePatchUser } from "./hooks/usePatchUser";
 import { useUser } from "./hooks/useUser";
@@ -44,7 +46,7 @@ export function UserProfile() {
       <Stack spacing={8} mx="auto" w="xl" py={12} px={6}>
         <UserAppointments />
         <Stack textAlign="center">
-          <Heading>Your information</Heading>
+        <Heading>Information for {user?.name}</Heading>
         </Stack>
         <Box rounded="lg" bg="white" boxShadow="lg" p={8}>
           <Formik

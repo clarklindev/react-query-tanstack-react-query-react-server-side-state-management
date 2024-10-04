@@ -1743,4 +1743,84 @@ export function useCancelAppointment() {
 }
 ```
 
+### 70. update user and query cache with mutation response
+
+- TODO: when updating data (do a mutation) and use the response data returned (from server) to update `user` and `query cache`
+- new custom hook: usePatchUser (update type "patch")
+- to update the cache -> `src/components/user/hooks/useUser.ts` hook -> `updateUser()` -> updates query cache using `setQueryData`
+- RECALL: the useUser hook has the function `updateUser()`
+
+```ts
+//src/components/user/hooks/useUser.ts
+export function useUser() {
+  // meant to be called from useAuth
+  function updateUser(newUser: User): void {
+    // TODO: update the user in the query cache
+    queryClient.setQueryData(
+      generateUserKey(newUser.id, newUser.token),
+      newUser
+    );
+  }
+}
+```
+
+- usePatchUser will update with the useUser hook
+- the new data is whatever is passed to `mutate("the new data")` call
+- `mutate` is renamed `patchUser`
+- and onSuccess, we want to updateUser with the response from server..
+- NOTE: onSuccess receives whatever is returned from mutate function (here patchUserOnServer())
+
+```ts
+// src/components/user/hooks/usePatchUser.ts
+import { useMutation } from "@tanstack/react-query";
+
+import { useUser } from "./useUser.ts";
+
+// for when we need a server function
+async function patchUserOnServer(
+  newData: User | null,
+  originalData: User | null
+): Promise<User | null> {
+  if (!newData || !originalData) return null;
+  // create a patch for the difference between newData and originalData
+  const patch = jsonpatch.compare(originalData, newData);
+
+  // send patched data to the server
+  const { data } = await axiosInstance.patch(
+    `/user/${originalData.id}`,
+    { patch },
+    {
+      headers: getJWTHeader(originalData.token),
+    }
+  );
+  return data.user;
+}
+
+export function usePatchUser() {
+  const { user, updateUser } = useUser();
+  const toast = useCustomToast();
+
+  const { mutate: patchUser } = useMutation({
+    mutateFn: (newData: User) => patchUserOnServer(newData, user),
+    onSuccess: (userData: User | null) => {
+      updateUser(userData);
+      toast({ title: "updated user", status: "success" });
+    },
+  });
+  return patchUser;
+}
+```
+
+### 71. NOTE: issue with query key: token in dependency array
+
+- NOTE: we deliberately delete the userToken dependency because if the time changes, the token changes and we need to use the same token
+
+```ts
+//client/src/react-query/key-factories.ts
+export const generateUserKey = (userId: number, userToken: string) => {
+  //deliberately delete userToken from dependency
+  return [queryKeys.user, userId];
+};
+```
+
 ## Section 9 - testing
