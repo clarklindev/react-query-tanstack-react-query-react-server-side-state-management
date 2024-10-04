@@ -1471,9 +1471,276 @@ export function useUserAppointments(): Appointment[] {
 }
 ```
 
-## Section 8 - Mutations
+## Section 8 - Mutations & query invalidations
 
 - updating data on the server
 - refreshing from server is important for mutations
+
+TO LEARN:
+
+- invalidate query on mutation so data is purged from the cache
+- update cache with data returned from the server after mutation
+- optimistic updates (assume mutation will be successful, rollback if not)
+
+TODO:
+
+- setup `global indicator` and `error handling` for mutations (same as for queries)
+- Errors:
+  - `onError` callback in `mutationCache` property of query client
+
+```ts
+//client/src/react-query/queryClient.ts
+import { QueryClient, QueryCache, MutationCache } from "@tanstack/react-query";
+
+function createTitle(errorMsg: string, actionType: "query" | "mutation") {
+  const action = actionType === "query" ? "fetch" : "update";
+  return `could not ${action} data: ${
+    errorMsg ?? "error connecting to server"
+  }`;
+}
+
+export const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 600000, //10minutes,
+      gcTime: 900000, //15min - garbage collection time
+      refetchOnWindowFocus: false,
+    },
+  },
+  queryCache: new QueryCache({
+    onError: (error) => {
+      //handle error
+      const title = createTitle(error.message, "query");
+      errorHandler(title);
+    },
+  }),
+
+  mutationCache: new MutationCache({
+    onError: (error) => {
+      const title = createTitle(error.message, "mutation");
+      errorHandler(title);
+    },
+  }),
+});
+```
+
+TODO:
+
+- Loading indicator:
+  - `useIsMutating` is analogous (similar) to `useIsFetching` -> tells us if any mutation calls are unresolved
+  - TODO: update `<Loading>` component to show `isMutating` / `isFetching`
+
+```ts
+//src/components/app/Loading.tsx
+import { useIsFetching, useIsMutating } from "@tanstack/react-query";
+
+export function Loading() {
+  const isFetching = useIsFetching();
+  const isMutating = useIsMutating();
+  const display = isFetching || isMutating ? "inherit" : "none";
+
+  return <Spinner display={display}>/*...*/</Spinner>;
+}
+```
+
+### 67. custom Mutation hook: useReserveAppointments that uses useMutation
+
+- `src/components/appointments/hooks/useReserveAppointment.ts`
+- the hook returns a mutation function -> allows calendar to run mutation with the appointment
+- similar to useQuery
+- BUT there is no cache data
+- no retries by default
+- no refetch
+- no isLoading vs isFetching (only isFetching)
+- useMutation returns a mutate function in the return object which runs the mutations
+- arguments added to mutate function -> useMutation will pass these arguments to the `{mutate}` function
+- `useMutation()` has an `onSuccess` for the mutationFn (similar to onError callbacks)
+- it will receive the data passed from mutationFn
+
+### FLOW:
+
+- when you run `useReserveAppointment()`, you will get back a function (the mutate),
+- then you pass to the mutate function an `appointment of type Appointment`
+- which internally calls setAppointmentUser(appointment, userId)
+
+```ts
+//src/components/appointments/hooks/useReserveAppointment.ts
+
+import { useMutation } from "@tanstack/react-query";
+import { Appointment } from "@shared/types";
+
+//...
+
+async function setAppointmentUser(
+  appointment: Appointment,
+  userId: number | undefined
+): Promise<void> {
+  if (!userId) return;
+  const patchOp = appointment.userId ? "replace" : "add";
+  const patchData = [{ op: patchOp, path: "/userId", value: userId }];
+  await axiosInstance.patch(`/appointment/${appointment.id}`, {
+    data: patchData,
+  });
+}
+
+export function useReserveAppointment() {
+  const { userId } = useLoginData();
+
+  const toast = useCustomToast();
+
+  const { mutate } = useMutation({
+    mutationFn: (appointment: Appointment) =>
+      setAppointmentUser(appointment, userId),
+    onSuccess: () => {
+      toast({ title: "you have reserved an appointment", status: "success" });
+    },
+  });
+
+  return mutate;
+}
+```
+
+- NOTE: here you can see the mutate function (reserveAppointment) returned by useReserveAppointment()
+
+```ts
+//src/components/appointments/Appointment.tsx
+import { useReserveAppointment } from "./hooks/useReserveAppointment";
+
+export function Appointment({ appointmentData }: AppointmentProps) {
+  const reserveAppointment = useReserveAppointment();
+
+  //...
+  if (clickable) {
+    //BELOW IS SUMMARY PSUEDOCODE -> SEE .TS CODE FOR IMPLEMENTATION
+    //-checks if userId exists, and assigns the ternarary evaluation to onAppointmentClick
+    onAppointmentClick = userId
+      ? () => reserveAppointment(appointmentData)
+      : undefined;
+  }
+}
+```
+
+- This updates the data but doesnt show the update visual (unless refreshed)
+
+### 68. invalidating query after mutation
+
+- after an update by mutation (the page did not automatically update)
+- FIX: invalidateQueries
+
+#### HOW...and what does invalidateQueries do?
+
+- you invalidate the cache for appointments data when you mutate the appointment \*(by reserving the appointment)
+- it marks the query as stale
+- triggers refetch if query is active (ie. component that uses the query is currently rendered)
+
+- FLOW:
+  1. you call mutate
+  2. within onSuccess, you call `invalidateQueries`
+  3. this triggers a refetch of the data
+
+### query filters
+
+- useQueryClient() query client methods (removeQueries, invalidateQueries, cancelQueries, refetchQueries)
+
+- all these methods can take a `query filter` argument.
+- specifies queries by a filter (can filter by):
+  - query key (including partial match)
+  - type (active, inactive, all)
+  - stale status (isFetching)
+- we will use `query key` to invalidate appointment and user appointments when there is an appointment mutation on the server
+- eg. any query beginning with the match (queryKeys.appointments) will be invalidated.
+
+```ts
+//...
+queryClient.invalidateQueries({
+  queryKey: [queryKeys.appointments],
+});
+```
+
+```ts
+import { Appointment } from "@shared/types";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+
+import { useLoginData } from "@/auth/AuthContext";
+import { axiosInstance } from "@/axiosInstance";
+import { useCustomToast } from "@/components/app/hooks/useCustomToast";
+import { queryKeys } from "@/react-query/constants";
+
+// for when we need functions for useMutation
+async function setAppointmentUser(
+  appointment: Appointment,
+  userId: number | undefined
+): Promise<void> {
+  if (!userId) return;
+  const patchOp = appointment.userId ? "replace" : "add";
+  const patchData = [{ op: patchOp, path: "/userId", value: userId }];
+  await axiosInstance.patch(`/appointment/${appointment.id}`, {
+    data: patchData,
+  });
+}
+
+export function useReserveAppointment() {
+  const queryClient = useQueryClient();
+
+  const { userId } = useLoginData();
+
+  const toast = useCustomToast();
+
+  const { mutate } = useMutation({
+    mutationFn: (appointment: Appointment) =>
+      setAppointmentUser(appointment, userId),
+    onSuccess: () => {
+      //invalidate
+      queryClient.invalidateQueries({
+        queryKey: [queryKeys.appointments],
+      });
+
+      toast({ title: "you have reserved an appointment", status: "success" });
+    },
+  });
+  return mutate;
+}
+```
+
+### 69. Code Quiz - useMutation to delete appointments
+
+- `src/components/appointments/hooks/useCancelAppointments.ts`
+- similar to useReserveAppointment() -> the onSuccess() handler should invalidate appointment queries, show a toast
+
+```ts
+//src/components/appointments/hooks/useCancelAppointments.ts
+import { Appointment } from "@shared/types";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+
+import { axiosInstance } from "@/axiosInstance";
+import { useCustomToast } from "@/components/app/hooks/useCustomToast";
+import { queryKeys } from "@/react-query/constants";
+
+// for when server call is needed
+async function removeAppointmentUser(appointment: Appointment): Promise<void> {
+  const patchData = [{ op: "remove", path: "/userId" }];
+  await axiosInstance.patch(`/appointment/${appointment.id}`, {
+    data: patchData,
+  });
+}
+
+export function useCancelAppointment() {
+  const queryClient = useQueryClient();
+
+  const toast = useCustomToast();
+  const { mutate } = useMutation({
+    mutationFn: removeAppointmentUser,
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: [queryKeys.appointments],
+      });
+
+      toast({ title: "you have cancelled the appointment", status: "success" });
+    },
+  });
+
+  return mutate;
+}
+```
 
 ## Section 9 - testing
