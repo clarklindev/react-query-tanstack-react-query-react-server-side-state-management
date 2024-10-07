@@ -1927,3 +1927,170 @@ return (
 ```
 
 ## Section 9 - testing
+
+### 75. intro to testing react query
+
+- https://tkdodo.eu/blog/testing-react-query
+- https://tanstack.com/query/latest/docs/framework/react/guides/testing
+
+- testing with -> react testing library
+- test how user interactions (not internals)
+
+### 76. setting up app for testing (mock service worker)
+
+- `mock service worker` mocks server calls (mimics) the server returning data from request
+- mock service worker intercepts server calls (return response based on our own handlers)
+- prevent network calls during tests
+- pre-empt server response (by defining our own test)
+- vitest, mock-service-work, react-testing-library
+- note: `src/mocks/handlers.js` and `src/setupTests.js`-> our functions determine what will be returned (mock data)
+
+```
+pnpm i vitest
+
+pnpm i @testing-library/react
+
+pnpm i @testing-library/jest-dom
+
+pnpm i eslint-plugin-vitest eslint-plugin-testing-library
+
+//mock-service-worker
+pnpm i msw
+
+```
+
+- add test settings in `vite.config.js`
+- `setupTest.js` runs before every test file runs
+  -> global imports
+  -> setup jest-dom for vitest
+- `tsconfig.json` has compiler options for:
+
+### typeRoots
+
+- [`typeRoots`](https://www.typescriptlang.org/tsconfig/#typeRoots) - if typeRoots specified, only packages under typeRoots will be included
+
+```json
+{
+  "compilerOptions": {
+    "typeRoots": ["./typings", "./vendor/types"]
+  }
+}
+```
+
+- This config file will include all packages under ./typings and ./vendor/types, and no packages from ./node_modules/@types. All paths are relative to the tsconfig.json.
+
+### types
+
+- [`types`](https://www.typescriptlang.org/tsconfig/#types) - if types is specified, only packages listed will be included in the global scope. specifying only the exact types you want included, whereas typeRoots supports saying you want particular folders.
+
+```json
+{
+  "compilerOptions": {
+    "types": ["node", "jest", "express"]
+  }
+}
+```
+
+- This tsconfig.json file will only include ./node_modules/@types/node, ./node_modules/@types/jest and ./node_modules/@types/express. Other packages under node_modules/@types/\* will not be included.
+
+### eslint
+
+- .eslintrc.cjs
+- import `eslint-plugin-vitest`
+- add vitest globals to `globals` array
+- add items to `extends` array
+- turn off vitest `expect/expect` rule
+
+### 77. query client and query provider in tests
+
+- src/components/treatments/tests/Treatments.test.tsx
+
+- start tests by rendering the component
+#### Error 01
+- ERROR: if you use pnpm instead of project start file which uses npm, you wont be using the same package versions as pnpm ignores package.lock thats created with npm (regarding react-focus-lock) -> FIX `pnpm i react-focus-lock@2.11.3`
+- FIX: use npm
+
+#### Error 02
+- ERROR: `Error: No QueryClient set, use QueryClientProvider to set one`
+- the problem -> when we run Treatments component, it runs `useTreatments.ts` -> which uses `useQuery`
+
+#### project setup
+- but the problem is we are running test in isolation (its not in the App component where we have query client and provider setup)
+- and you cant use any `useQuery` hooks without a `queryClient` provider
+- FIX: create a function to wrap whatever we want to render in a query provider before rendering.
+  - NOTE: and the query provider will need a queryClient
+- TODO: each test gets a new `queryClient` -> put the creation in a function so we can pass defaults props.
+- TODO: allow setting different clients 
+
+#### creating a custom renderer
+- we create a custom render and re-export the render with same name
+- so now, instead of using react's render, we will have a render function that also has a provider
+- `src/test-utils/index.tsx`
+- we `import {ChakraProvider} from '@chakra-ui/react'`
+- we `import { render as RtlRender } from '@testing-library/react'`
+- by doing this, we can just `import test-utils/index.tsx` and it will be like we are importing `@testing-library/react` but we will have our `custom render` and `@testing-library`
+- to the customRender() we can also pass an optional query client.
+
+#### query client
+
+```ts
+//src/test-utils/index.tsx
+import { ChakraProvider } from "@chakra-ui/react";
+import { render as RtlRender } from "@testing-library/react";
+import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
+import { PropsWithChildren, ReactElement } from "react";
+import { MemoryRouter } from "react-router-dom";
+
+// ** FOR TESTING CUSTOM HOOKS ** //
+// from https://tkdodo.eu/blog/testing-react-query#for-custom-hooks
+//make a function to generatea unique query for each test
+export const createQueryClientWrapper = () => {
+  const queryClient = generateQueryClient();
+  return ({ children }: PropsWithChildren) => (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  );
+};
+
+const generateQueryClient = ()=>{
+  return new QueryClient();
+}
+
+// reference: https://testing-library.com/docs/react-testing-library/setup#custom-render
+function customRender(ui: ReactElement, client?:QueryClient) {
+  const queryClient = client ?? generateQueryClient();  //if query client is not nullish, use it else generate a new one
+
+  return RtlRender(
+    <ChakraProvider>
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>{ui}</MemoryRouter>
+      </QueryClientProvider>
+    </ChakraProvider>
+  );
+}
+
+// re-export everything
+// eslint-disable-next-line react-refresh/only-export-components
+export * from "@testing-library/react";
+
+// override render method
+export { customRender as render };
+```
+
+```ts
+//src/treatments/tests/Treatments.test.tsx
+
+// import { render, screen } from "@testing-library/react";
+//replace with `custom` render
+import { render, screen } from '@/test-utils';
+
+import { Treatments } from "../Treatments";
+
+test("renders response from query", () => {
+  // write test here
+  render(<Treatments/>);
+});
+```
+
+```terminal
+pnpm test
+```

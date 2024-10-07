@@ -11,3 +11,7 @@
 ## Starting the server
 
 Run `npm start`. The server will be found at [http://localhost:3030]
+
+# NOTE - use npm and not pnpm:
+- please note the project-start files use `npm` and not `pnpm` so you should use npm for consistency with package-lock.json so that the intended version of packages are installed otherwise there are lots of errors.
+
