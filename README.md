@@ -2005,7 +2005,11 @@ pnpm i msw
 
 - src/components/treatments/tests/Treatments.test.tsx
 
+```terminal
+pnpm test
+```
 - start tests by rendering the component
+
 #### Error 01
 - ERROR: if you use pnpm instead of project start file which uses npm, you wont be using the same package versions as pnpm ignores package.lock thats created with npm (regarding react-focus-lock) -> FIX `pnpm i react-focus-lock@2.11.3`
 - FIX: use npm
@@ -2075,6 +2079,9 @@ export * from "@testing-library/react";
 // override render method
 export { customRender as render };
 ```
+#### 78. testing rendered query data
+- note: `screen` is how we access the results of the render.
+- the test function call for the getting the mock data is async (even though the data is from `mock-service-worker`)
 
 ```ts
 //src/treatments/tests/Treatments.test.tsx
@@ -2085,12 +2092,30 @@ import { render, screen } from '@/test-utils';
 
 import { Treatments } from "../Treatments";
 
-test("renders response from query", () => {
+test("renders response from query", async () => {
   // write test here
   render(<Treatments/>);
+
+  const treatmentTitles = await screen.findAllByRole("heading", {
+    name: /massage|facial|scrub/i,
+  });
+
+  expect(treatmentTitles).toHaveLength(3);  
 });
 ```
 
-```terminal
-pnpm test
+### 79. test rendered staff data
+- src/components/staff/tests/AllStaff.test.tsx
+
+```ts
+import { AllStaff } from "../AllStaff";
+
+// import { render, screen } from "@/test-utils";
+
+test("renders response from query", () => {
+  // write test here
+});
+
 ```
+
+
