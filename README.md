@@ -2082,6 +2082,7 @@ export { customRender as render };
 #### 78. testing rendered query data
 - note: `screen` is how we access the results of the render.
 - the test function call for the getting the mock data is async (even though the data is from `mock-service-worker`)
+- regex /i (case-insensitive)
 
 ```ts
 //src/treatments/tests/Treatments.test.tsx
@@ -2097,7 +2098,7 @@ test("renders response from query", async () => {
   render(<Treatments/>);
 
   const treatmentTitles = await screen.findAllByRole("heading", {
-    name: /massage|facial|scrub/i,
+    name: /massage|facial|scrub/i,  
   });
 
   expect(treatmentTitles).toHaveLength(3);  
@@ -2110,12 +2111,120 @@ test("renders response from query", async () => {
 ```ts
 import { AllStaff } from "../AllStaff";
 
-// import { render, screen } from "@/test-utils";
+import { http, HttpResponse } from "msw";
+import { render, screen } from "@/test-utils";
+import { server } from '@/mocks/server';
 
-test("renders response from query", () => {
-  // write test here
+test("renders response from query", async () => {
+  render(<AllStaff/>);
+
+  // (re)set handler to return a 500 error for staff and treatments
+  server.use(
+    http.get("http://localhost:3030/staff", () => {
+      return new HttpResponse(null, { status: 500 });
+    }),
+    http.get("http://localhost:3030/treatments", () => {
+      return new HttpResponse(null, { status: 500 });
+    })
+  );
+
+  const staffTitles = await screen.findAllByRole('heading', {
+    name: /sandra|divya|mateo|michael/i
+  });
+  expect(staffTitles).toHaveLength(4);
+});
+```
+
+### 80. testing query errors
+- `src/components/staff/tests/AllStaff.error.test.tsx`
+- we use mock service worker to mimic errors response from server
+- error response for `/staff` and `/treatments`
+- src/setupTest.js -> `afterEach(() => server.resetHandlers());` servers get reset after each test.
+- we are testing if the alert pops up
+- NOTE: src/react-query/queryClient.ts -> we update to export `queryClientOptions`, 
+
+### query client options
+```ts
+//src/react-query/queryClient.ts
+import { QueryClient, QueryCache, MutationCache, QueryClientConfig } from "@tanstack/react-query";
+
+//...
+export const queryClientOptions:QueryClientConfig = {
+  defaultOptions: {
+    queries: {
+      staleTime: 600000, //10minutes,
+      gcTime: 900000, //15min - garbage collection time
+      refetchOnWindowFocus: false,
+    },
+  },
+  queryCache: new QueryCache({
+    onError: (error) => {
+      //handle error
+      const title = createTitle(error.message, "query");
+      errorHandler(title);
+    },
+  }),
+
+  mutationCache: new MutationCache({
+    onError: (error) => {
+      const title = createTitle(error.message, "mutation");
+      errorHandler(title);
+    },
+  }),
+};
+//...
+```
+- then import `queryClientOptions` in `src/test-utils/index.tsx`
+
+```ts
+//src/test-utils/index.tsx
+import { queryClientOptions } from "@/react-query/queryClient";
+
+//...
+
+const generateQueryClient = ()=>{
+  queryClientOptions.defaultOptions.queries.retry = false;
+
+  return new QueryClient(queryClientOptions);
+}
+```
+
+### Error testing (turn off re-tries)
+- in `AllStaff.error.test.tsx`
+- with the queryClientOptions passed to QueryClient, we are able to get error passed in errorHandler() which shows the toast with the error.
+- note: the `.findByRole('status')` is async as we wait for the status, but the test fails because of default test timeout test and retry query 3x times -> but this is too long
+- NOTE: `src/react-query/queryClient.tsx` -> queryClientOptions was assigned the type `QueryClientConfig`
+- FIX: in the test -> `src/test-utils/index.tsx` -> we can adjust re-tries in `queryClientOptions.defaultOptions.queries.retry` (see generateQueryClient())
+
+```ts
+//src/components/staff/tests/AllStaff.error.test.tsx
+import { AllStaff } from "../AllStaff";
+import { http, HttpResponse } from "msw";
+
+import { render, screen } from "@/test-utils";
+import { server } from '@/mocks/server';
+
+test("renders response from query", async () => {
+  render(<AllStaff/>);
+
+// (re)set handler to return a 500 error for staff and treatments
+  server.use(
+    http.get("http://localhost:3030/staff", () => {
+      return new HttpResponse(null, { status: 500 });
+    }),
+    http.get("http://localhost:3030/treatments", () => {
+      return new HttpResponse(null, { status: 500 });
+    })
+  );
+
+  const alertToast = await screen.findByRole('status');
+  expect(alertToast).toHaveTextContent(/could not fetch data/i);
+
 });
 
+
+
 ```
+
 
 
