@@ -2292,9 +2292,124 @@ test("Reserve appointment", async () => {
 ```
 
 ### 82. testing custom hooks
+- `renderHook` method in `@testing-library/react` 
+- generally it is better to render to component that uses the hook.
+- eg. `useAppointments` could be tested via the component. we will test filtering the appoints
+- using renderHook, we will create provider wrapper with individual query client (see 83.)
 
 ### 83. test appointments filter
+- writing a test for useAppointments hook, test that the filtering works (eg show all vs not show all)
+- createQueryClientWrapper() -> it wraps a Provider with a new client (everytime) around the children 
+
+```ts
+// src/test-utils/index.tsx
+// ** FOR TESTING CUSTOM HOOKS ** //
+// from https://tkdodo.eu/blog/testing-react-query#for-custom-hooks
+//make a function to generatea unique query for each test
+import {PropsWithChildren} from 'react';
+
+export const createQueryClientWrapper = () => {
+  const queryClient = generateQueryClient();
+  return ({ children }: PropsWithChildren) => (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  );
+};
+```
+
+- `act` helps render functions from the hook
+- `renderHook` - help render hook
+- `waitFor` - help wait for results from hook
+- if you look at the `result` from console.log (we use setShowAll())
+
+```ts
+//console.log(result);
+{
+  current: {
+    appointments: {},
+    monthYear: {
+      startDate: [M],
+      firstDOW: 2,
+      lastDate: 31,
+      monthName: 'October',
+      month: '10',
+      year: '2024'
+    },
+    updateMonthYear: [Function: updateMonthYear],
+    showAll: false,
+    setShowAll: [Function: bound dispatchSetState]
+  }
+}
+```
+
+```ts
+//src/components/appointments/tests/useAppointments.test.tsx
+
+import { act, renderHook, waitFor } from "@testing-library/react";
+
+import { useAppointments } from "../hooks/useAppointments";
+import { AppointmentDateMap } from "../types";
+import { createQueryClientWrapper } from "@/test-utils";
+
+const getAppointmentCount = (appointments:AppointmentDateMap) => 
+  Object.values(appointments).reduce((runningCount, appointmentsOnDate) => runningCount + appointmentsOnDate.length, 0);
+
+test("filter appointments by availability", async () => {
+
+  const { result } = renderHook(()=> useAppointments(), {
+    wrapper: createQueryClientWrapper()
+  });
+
+  console.log(result);
+
+  //wait for appointments to populate
+  await waitFor(()=> 
+    expect(getAppointmentCount(result.current.appointments)).toBeGreaterThan(0)
+  );
+
+  //appointments start out filted (show only available)
+  const filteredAppointmentsLength = getAppointmentCount(
+    result.current.appointments
+  );
+
+  //set to return all appointments -> the update happens realtime ie result.current is affected by setShowAll
+  act(()=> result.current.setShowAll(true));
+
+  //wait for count of appointments to be greater than when filtered
+  expect(getAppointmentCount(result.current.appointments)).toBeGreaterThan(filteredAppointmentsLength)
+});
+```
 
 ### 84. test staff filter
+- TODO: test custom the filtering of useStaff hook `src/components/staff/hooks/useStaff.ts`
+- render the hook
+- wait for staff length to be 4
+- update the filter state value
+- expect the staff length to be appropriate for the new filter state
+- look at `src/mocks/mockData.js` treatmentNames -> eg. only 3 people do facials out of total 4 staff
 
-### 85. testing react query
+```ts
+//src/components/staff/tests/useStaff.test.tsx
+import { act, renderHook, waitFor } from "@testing-library/react";
+
+import { useStaff } from "../hooks/useStaff";
+
+import { createQueryClientWrapper } from "@/test-utils";
+
+test("filter staff", async () => {
+  const {result} = renderHook(()=> useStaff(), {
+    wrapper: createQueryClientWrapper()
+  });
+
+  //wait for staff to populate
+  await waitFor(()=> expect(result.current.staff).toHaveLength(4));
+
+  //set to filter for only staff who give facial
+  act(()=> result.current.setFilter("facial"));
+
+  //wait for staff list to display only 3
+  await waitFor(()=> expect(result.current.staff).toHaveLength(3));
+});
+
+```
+
+
