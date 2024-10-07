@@ -2222,9 +2222,79 @@ test("renders response from query", async () => {
 
 });
 
+```
+### 81. testing mutations
+- MSW (Mock-service-worker) - doesnt mimic a dynamic server (cant change response based on state)
+- to test results of mutation, need to have a test server (not just MSW)
+- What we will test? test if we get the success toast...(success mutation)
+- need to wrap components with a query provider (that has client prop)
+- tests require `useMutation` and `invalidateQueries` which both require a ~provider~
+- test will trigger a mutation (eg. a click on an appointment to reserve)
+- TODO: close toast at end of test
+- TODO: toast dissapears during the testing (not after test finishes)
+- TODO: mock user login (mock return value (user object with value that is NOT null) from `useLoginData` hook) 
+- in src/setupTests.js -> mock useLoginData to mimic a logged-in user
 
+```ts
+//src/setupTests.js
+
+// mock useLoginData to mimic a logged-in user
+vi.mock("./auth/AuthContext", () => ({
+  __esModule: true,
+  // for the hook return value
+  useLoginData: () => ({ userId: 1 }),
+  // for the provider default export
+  default: ({ children }) => children,
+}));
 
 ```
 
+- the render in (`src/components/appointments/tests/appointmentMutations.test.tsx`) is our custom render (`src/test-utils/index.tsx`)
+- we render the calendar, find all appointment buttons...
+- click on first one...
+- expect an alert with text content that has "reserve"
+- then we close the alert (cleanup) and wait for element to be removed
+- NOTE: `waitForElementToBeRemoved` from "@/test-utils" exists because we also exported all of @testing-library/react: `export * from "@testing-library/react";` 
 
+```ts
+//src/components/appointments/tests/appointmentMutations.test.tsx
+import { Calendar } from "../Calendar";
 
+import {
+  fireEvent,
+  render,
+  screen,
+  waitForElementToBeRemoved,
+} from "@/test-utils";
+
+test("Reserve appointment", async () => {
+  // TODO: render the calendar
+  render(<Calendar/>);
+  
+  // find all the appointments
+  const appointments = await screen.findAllByRole("button", {
+    name: /\d\d? [ap]m\s+(scrub|facial|massage)/i,
+  });
+  
+  // click on the first one to reserve
+  fireEvent.click(appointments[0]);
+  
+  // check for the toast alert
+  const alertToast = await screen.findByRole("status");
+  expect(alertToast).toHaveTextContent("reserve");
+  
+  // close alert to keep state clean and wait for it to disappear
+  const alertCloseButton = screen.getByRole("button", { name: "Close" });
+  fireEvent.click(alertCloseButton);
+  await waitForElementToBeRemoved(alertToast);
+});
+
+```
+
+### 82. testing custom hooks
+
+### 83. test appointments filter
+
+### 84. test staff filter
+
+### 85. testing react query
