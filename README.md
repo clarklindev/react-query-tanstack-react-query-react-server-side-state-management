@@ -7,6 +7,18 @@ https://github.com/clarklindev/react-query-tanstack-react-query-react-server-sid
 - Tanstack query v5 (supports multiple frameworks, programing languages) - this udemy course
 - TanStack Query v4
 
+## Table of contents
+- [Section 01 - Creating queries and loading / error states](#section-01-creating-queries-and-loading--error-states)
+- [Section 02 - Pagination, pre-fetching, mutations](#section-2---pagination-pre-fetching-mutations)
+- [Section 03 - Infinite Queries for Loading Data JIT (Just-in-Time)](#section-3---infinite-queries-for-loading-data-jit-just-in-time)
+- [Section 04 - React Query in Larger Apps: Setup, Centralization, Custom Hook](#section-04---react-query-in-larger-apps-setup-centralization-custom-hook)
+- [Section 05 - Query Features - Prefetching and Pagination](#section-5---query-features---prefetching-and-pagination)
+- [Section 06 - Query Features - Transforming and Re-fetching Data](#section-06---query-features---transforming-and-re-fetching-data)
+- [Section 07 - React Query and Authentication](#section-7---react-query-and-authentication)
+- [Section 08 - Mutations & Query Invalidation](#section-8---mutations--query-invalidations)
+- [Section 09 - Testing React Query](#section-09---testing-react-query)
+
+
 ## section 01: creating queries and loading / error states
 
 - what is it? server-side state management
@@ -856,7 +868,7 @@ export const queryClient = new QueryClient({
 
 ## Section 5 AND Section 6
 
-## Section 5
+## Section 5 - query features - Prefetching and pagination
 
 ### prefetching
 
@@ -947,7 +959,7 @@ export function Home() {
 
 ---
 
-## Section 6
+## Section 06 - Query features - transforming and re-fetching data
 
 - useCallback and useMemo are both hooks in React that help optimize performance, but they serve different purposes:
 
@@ -1926,7 +1938,7 @@ return (
 );
 ```
 
-## Section 9 - testing
+## Section 09 - testing react query
 
 ### 75. intro to testing react query
 
